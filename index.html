@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🗾 2026 京都・大阪 每日行程互動地圖</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&amp;family=Inter:wght@400;500;600&amp;display=swap');
+        
+        body { font-family: 'Noto Sans TC', 'Inter', system-ui, -apple-system, sans-serif; }
+        
+        .map-container { border-radius: 20px; overflow: hidden; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); }
+        
+        .day-card {
+            transition: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            cursor: pointer;
+        }
+        .day-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+        }
+        .day-card.active {
+            border-color: #14b8a6;
+            box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
+            transform: scale(1.01);
+        }
+        
+        .place-row {
+            transition: all 0.2s ease;
+        }
+        .place-row:hover {
+            background-color: #f8fafc;
+        }
+        
+        .leaflet-popup-content-wrapper {
+            border-radius: 16px;
+            padding: 4px;
+        }
+        
+        .section-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #134e4b;
+            letter-spacing: -0.02em;
+        }
+        
+        .travel-card {
+            background: linear-gradient(145deg, #ffffff, #f8fafc);
+        }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <!-- Top Nav -->
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-x-4">
+                <div class="flex items-center gap-x-3">
+                    <div class="w-11 h-11 bg-teal-700 rounded-2xl flex items-center justify-center text-white text-3xl shadow-inner">🗾</div>
+                    <div>
+                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">2026 京都・大阪</h1>
+                        <p class="text-sm text-teal-700 font-medium -mt-1">每日行程互動地圖 v3</p>
+                    </div>
+                </div>
+                <div class="px-3 py-1 bg-teal-100 text-teal-700 text-xs font-bold rounded-2xl">多代同堂 • 成人團</div>
+            </div>
+            
+            <div class="flex items-center gap-x-3">
+                <button onclick="showAllDays()" 
+                        class="px-5 py-2 text-sm font-semibold bg-white border border-slate-300 hover:bg-slate-50 rounded-3xl flex items-center gap-x-2 transition">
+                    <span>顯示全部</span>
+                </button>
+                <button onclick="resetMapAndDays()" 
+                        class="px-5 py-2 text-sm font-semibold bg-teal-700 text-white rounded-3xl flex items-center gap-x-2 hover:bg-teal-800 transition">
+                    重置地圖
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-screen-2xl mx-auto px-6 pt-8 pb-16">
+        
+        <!-- Hero -->
+        <div class="mb-8">
+            <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-y-3">
+                <div>
+                    <h2 class="section-title">每日行程導覽</h2>
+                    <p class="text-slate-600 mt-1">點擊下方任一天卡片，即可查看該日詳細介紹、地圖標記與實用點位</p>
+                </div>
+                <div class="text-xs text-slate-500">資料來源：最新 2026 京都・大阪旅行手冊（Evernote）</div>
+            </div>
+        </div>
+
+        <!-- Daily Itinerary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-10" id="dayCards">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Day Detail Panel (hidden by default, shown when day selected) -->
+        <div id="dayDetailPanel" class="hidden mb-10 bg-white rounded-3xl border border-teal-100 shadow-sm overflow-hidden">
+            <div class="px-8 py-6 bg-gradient-to-r from-teal-700 to-teal-600 text-white flex items-center justify-between">
+                <div>
+                    <div id="dayDetailTitle" class="text-2xl font-bold"></div>
+                    <div id="dayDetailSubtitle" class="text-teal-100 text-sm mt-1"></div>
+                </div>
+                <button onclick="hideDayDetail()" 
+                        class="px-5 py-2 bg-white/20 hover:bg-white/30 text-white text-sm font-semibold rounded-3xl flex items-center gap-x-2 transition">
+                    ✕ 關閉詳細
+                </button>
+            </div>
+            
+            <div class="p-8">
+                <!-- Day Overview Text -->
+                <div id="dayOverviewText" class="prose prose-slate max-w-none text-[15px] leading-relaxed text-slate-700 mb-8">
+                    <!-- JS injected -->
+                </div>
+                
+                <!-- Day Places -->
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="font-bold text-lg text-slate-800">今日推薦點位</div>
+                        <div id="dayPlaceCount" class="text-sm text-teal-600 font-medium"></div>
+                    </div>
+                    <div id="dayPlacesList" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Map Section -->
+        <div class="mb-6">
+            <div class="flex items-center justify-between mb-4 px-1">
+                <div class="section-title flex items-center gap-x-3">
+                    <span>🗺️</span> 
+                    <span>即時互動地圖</span>
+                    <span id="mapStatus" class="text-sm font-normal text-teal-600"></span>
+                </div>
+                <div class="text-xs text-slate-500">點擊地圖標記可看詳細介紹 • 拖曳縮放</div>
+            </div>
+            
+            <div class="map-container w-full h-[520px] xl:h-[560px] bg-slate-100 border border-slate-200" id="map"></div>
+            
+            <div class="mt-3 flex flex-wrap gap-x-5 gap-y-1 px-1 text-xs text-slate-500">
+                <div class="flex items-center gap-x-1.5"><span class="inline-block w-3 h-3 bg-teal-600 rounded-full"></span> 主要景點</div>
+                <div class="flex items-center gap-x-1.5"><span class="inline-block w-3 h-3 bg-amber-500 rounded-full"></span> 住宿</div>
+                <div class="flex items-center gap-x-1.5"><span class="inline-block w-3 h-3 bg-rose-500 rounded-full"></span> 美食</div>
+                <div class="flex items-center gap-x-1.5"><span class="inline-block w-3 h-3 bg-violet-500 rounded-full"></span> 購物娛樂</div>
+            </div>
+        </div>
+
+        <!-- Full Searchable List (always visible for quick lookup) -->
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b bg-slate-50 flex items-center justify-between">
+                <div class="font-bold text-lg">所有點位快速查詢（可跨日搜尋）</div>
+                <div class="relative w-80">
+                    <input id="globalSearch" type="text" placeholder="搜尋餐廳、車站、便利店..." 
+                           class="w-full pl-10 py-2 bg-white border border-slate-300 focus:border-teal-500 rounded-3xl text-sm placeholder:text-slate-400 focus:outline-none">
+                    <div class="absolute left-4 top-2.5 text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 01-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                </div>
+            </div>
+            <div class="max-h-[380px] overflow-y-auto p-2" id="fullPlacesList">
+                <!-- JS populated -->
+            </div>
+        </div>
+        
+        <div class="mt-6 text-center text-xs text-slate-400">
+            此頁面為每日行程視覺化輔助 • 完整文化深度、體力指數、雨天備案與詳細注意事項請參考 Evernote 旅行手冊
+        </div>
+    </div>
+
+    <script>
+        // Tailwind + Data
+        let map;
+        let allMarkers = {};
+        let currentDayFilter = null;
+        
+        // Day definitions with rich content from handbook
+        const daysData = [
+            {
+                id: "day1",
+                num: "Day 1",
+                title: "抵達京都・基地安頓日",
+                emoji: "🏨",
+                hook: "入住梅小路皇家公園酒店，輕鬆探索周邊",
+                color: "#14b8a6",
+                overview: "今天以安頓為主。飯店位於京都車站南側梅小路公園旁，步行即可到達京都水族館與京都鐵道博物館。適合剛抵達、調整時差、或長輩想輕鬆活動的日子。附近有超市與多間便利店，生活機能極佳。",
+                places: [
+                    { name: "梅小路皇家公園酒店（京都）", note: "本趟京都基地，位置絕佳" },
+                    { name: "京都水族館", note: "飯店對面，雨天或想放鬆的最佳選擇，大山椒魚與水母區很療癒" },
+                    { name: "京都鐵道博物館", note: "鐵道迷必訪，互動性強，與水族館形成完美輕鬆組合" },
+                    { name: "京都車站", note: "交通樞紐，超市、餐廳一應俱全" },
+                    { name: "LIFE", note: "大型超市，補充日用品方便" }
+                ]
+            },
+            {
+                id: "day2",
+                num: "Day 2",
+                title: "嵐山經典散策日",
+                emoji: "🎋",
+                hook: "竹林、天龍寺、渡月橋，京都最美自然與庭園",
+                color: "#0ea5e9",
+                overview: "嵐山是京都經典中的經典。今天以步行為主，建議穿舒服的鞋。從小火車或公車前往，沿途可安排川床星巴克（塌塌米體驗）、嵐山溫泉足湯放鬆。竹林建議清晨或傍晚前往，避開人潮。搭配天龍寺與渡月橋，半日到一日都很剛好。",
+                places: [
+                    { name: "竹林（嵐山）", note: "翠綠隧道超療癒，建議避開尖峰時段" },
+                    { name: "天龍寺位置", note: "世界遺產，庭園優美，與竹林、渡月橋串聯最佳" },
+                    { name: "渡月橋", note: "嵐山地標，橋上風景極佳，秋冬紅葉、春櫻都美" },
+                    { name: "☕️川床星巴克", note: "開在百年町家，需脫鞋坐塌塌米，很有京都味" },
+                    { name: "嵐山溫泉足湯", note: "免費或低價，逛完泡腳超放鬆" },
+                    { name: "小火車龜岡車站", note: "前往嵐山的交通選擇之一" }
+                ]
+            },
+            {
+                id: "day3",
+                num: "Day 3",
+                title: "東山・祇園文化日",
+                emoji: "🏯",
+                hook: "八坂之塔、祇園白川、三十三間堂，雨天也美",
+                color: "#8b5cf6",
+                overview: "這一天走進京都的「重要傳統建築物群保存地區」。重點是八坂之塔與周邊石板路（二年坂、三年坂）。若體力允許可延伸到祇園白川。強烈推薦加入「三十三間堂」——日本最長木造建築，1,001尊觀音像氣場強大，雨天從屋簷滴水聲中參拜，特別有味道。備選方案包含東映太秦電影村（武士體驗）與京都傳統產業博物館（職人示範）。",
+                places: [
+                    { name: "八坂之塔(五重塔)拍照點", note: "京都最有古都感的五重塔，拍照聖地" },
+                    { name: "祇園白川", note: "優雅歷史街區，柳樹與老町家氣氛高級寧靜" },
+                    { name: "三十三間堂", note: "雨天最美！1,001尊觀音像，脫鞋走在木地板上感受千年氣場" },
+                    { name: "京都傳統產業博物館", note: "平安神宮旁，74種傳統工藝現場職人示範，適合買高級伴手禮" },
+                    { name: "東映太秦映畫村", note: "備選方案。電影製片廠，劍劇秀、江戶街景、特攝模型，適合喜歡時代劇的家庭" }
+                ]
+            },
+            {
+                id: "day4",
+                num: "Day 4",
+                title: "宇治抹茶與勝運日",
+                emoji: "🍵",
+                hook: "平等院、中村藤吉、任天堂博物館，抹茶與遊戲的完美一天",
+                color: "#d97706",
+                overview: "今天往南到宇治（世界遺產平等院所在地）。宇治是抹茶聖地，中村藤吉是必訪老店。附近還有任天堂博物館（2026新亮點）。若想再往北，可安排勝尾寺求「勝運」達摩。整體以文化+美食為主，步行量適中，適合安排在較輕鬆的日子。",
+                places: [
+                    { name: "平等院", note: "世界遺產，鳳凰堂與池塘倒影極為優雅" },
+                    { name: "🍵🍰🍜🍦中村藤吉", note: "宇治抹茶名店，甜點與餐點都優秀" },
+                    { name: "抹茶街", note: "宇治抹茶相關商店集中區" },
+                    { name: "任天堂博物館", note: "2026新亮點，任天堂官方博物館，適合全家" },
+                    { name: "勝尾寺", note: "以勝運聞名，境內達摩很多，適合求好運" },
+                    { name: "出町柳", note: "京都北部交通點，可作為勝尾寺的轉乘參考" }
+                ]
+            },
+            {
+                id: "day5",
+                num: "Day 5",
+                title: "大阪購物美食日",
+                emoji: "🏙️",
+                hook: "梅田購物 + 難波道頓堀，享受大阪的熱鬧與美食",
+                color: "#f43f5e",
+                overview: "從京都出發到大阪，入住四季靱公園酒店。白天可安排梅田的任天堂、吉卜利、湯姆與傑利相關店舖或展覽。晚上到心齋橋、戎橋、難波橋一帶，體驗大阪的霓虹與美食（大阪燒、回轉壽司、壽喜燒推薦店）。這一天以購物與夜間美食為主，體力消耗較大，但非常有活力。",
+                places: [
+                    { name: "大阪四季靱公園酒店", note: "大阪住宿基地，位置方便前往梅田與難波" },
+                    { name: "梅田任天堂購物區", note: "任天堂官方周邊，2026值得一逛" },
+                    { name: "梅田吉卜利", note: "吉卜利相關店舖或展覽" },
+                    { name: "梅田湯姆與傑利", note: "可愛的湯姆與傑利主題店" },
+                    { name: "心齋橋筋", note: "大阪經典購物街" },
+                    { name: "戎橋", note: "道頓堀心臟，夜景與美食集中地" },
+                    { name: "必吃回轉壽司 / 🍣FB元祿回轉壽司", note: "大阪必吃回轉壽司推薦" },
+                    { name: "大阪燒", note: "大阪靈魂美食" }
+                ]
+            },
+            {
+                id: "day6",
+                num: "Day 6",
+                title: "出發前 Outlet + 溫泉放鬆日",
+                emoji: "🛍️♨️",
+                hook: "りんくうプレミアム・アウトレット + 臨空之湯，優雅結束旅程",
+                color: "#0f766e",
+                overview: "這是整趟旅程最貼心的安排。從大阪或京都前往關西機場附近的 Rinku Premium Outlets（日本最大 Outlet 之一）。園區很大，有完善休息區與海景餐飲中心。如果體力有限，可以坐在落地窗前看海、喝茶，讓其他人去衝鋒陷陣。逛完強烈建議去旁邊的「臨空之湯」（步行約5-8分鐘），可以看到海景的溫泉設施。泡完溫泉洗去六天疲勞，在飛機上會睡得非常舒服。這絕對是整趟旅程最人性化的結尾。",
+                places: [
+                    { name: "outlet", note: "りんくうプレミアム・アウトレット，離境前最後購物天堂" },
+                    { name: "Main Side（主建築區）", note: "Outlet 主區，品牌集中" },
+                    { name: "Sea Side（海濱區）", note: "海景區，適合休息看海" },
+                    { name: "海鮮市場旁定食", note: "新鮮海鮮定食推薦" },
+                    { name: "行李寄放", note: "出發前寄放行李超方便" },
+                    { name: "富士捷出國停車場", note: "自駕或接送相關" }
+                ]
+            }
+        ];
+        
+        // Map points (same as v2 but with day assignment)
+        const mapPoints = [
+            { id: "hotel_kyoto", name: "梅小路皇家公園酒店（京都）", lat: 34.9809, lng: 135.7557, category: "住宿", day: "day1", color: "#14b8a6", desc: "本趟旅行京都基地。緊鄰梅小路公園，步行3分鐘到京都水族館，5分鐘到京都鐵道博物館。" },
+            { id: "aquarium", name: "京都水族館", lat: 34.9804, lng: 135.7552, category: "景點", day: "day1", color: "#0ea5e9", desc: "就在飯店對面！京都的河流文化與大山椒魚（娃娃魚）是亮點。雨天或長輩想輕鬆活動的首選。" },
+            { id: "railway_museum", name: "京都鐵道博物館", lat: 34.9821, lng: 135.7531, category: "景點", day: "day1", color: "#0ea5e9", desc: "鐵道迷與小朋友最愛。展示日本鐵道歷史與實車，互動性強。" },
+            { id: "bamboo_grove", name: "竹林（嵐山）", lat: 35.009, lng: 135.667, category: "景點", day: "day2", color: "#0ea5e9", desc: "嵐山經典。翠綠竹林隧道非常療癒，建議清晨前往避開人潮。" },
+            { id: "tenryuji", name: "天龍寺（嵐山）", lat: 35.011, lng: 135.6665, category: "景點", day: "day2", color: "#0ea5e9", desc: "世界遺產，庭園美麗。與竹林、渡月橋形成完美嵐山半日遊路線。" },
+            { id: "togetsukyo", name: "渡月橋（嵐山）", lat: 35.0115, lng: 135.6685, category: "景點", day: "day2", color: "#0ea5e9", desc: "嵐山地標。橋上可遠眺嵐山全景，秋天紅葉、春天櫻花都極美。" },
+            { id: "yasaka_tower", name: "八坂之塔（法觀寺五重塔）", lat: 34.9997, lng: 135.7751, category: "景點", day: "day3", color: "#8b5cf6", desc: "京都最經典的「古都感」拍照點。位於重要傳統建築物群保存地區。" },
+            { id: "gion_shirakawa", name: "祇園白川", lat: 35.003, lng: 135.775, category: "景點", day: "day3", color: "#8b5cf6", desc: "京都最優雅的歷史街區之一。白川沿岸的柳樹與老町家，氣氛寧靜高級。" },
+            { id: "sanjusangendo", name: "三十三間堂", lat: 34.987, lng: 135.772, category: "景點", day: "day3", color: "#8b5cf6", desc: "日本最長木造建築，堂內供奉1,001尊觀音像。雨天最美！" },
+            { id: "traditional_crafts", name: "京都傳統產業博物館", lat: 35.026, lng: 135.782, category: "景點", day: "day3", color: "#8b5cf6", desc: "平安神宮旁。展示京都74種傳統工藝，現場職人示範。" },
+            { id: "toei_uzumasa", name: "東映太秦映畫村", lat: 35.015, lng: 135.707, category: "景點", day: "day3", color: "#8b5cf6", desc: "備選方案。真正的電影製片廠，江戶街景、劍劇秀、特攝怪獸模型。" },
+            { id: "byodoin", name: "平等院（宇治）", lat: 34.8893, lng: 135.8077, category: "景點", day: "day4", color: "#d97706", desc: "世界遺產，鳳凰堂與池塘景觀極為優雅。宇治抹茶名產區。" },
+            { id: "nintendo_museum", name: "任天堂博物館（宇治）", lat: 34.891, lng: 135.81, category: "購物娛樂", day: "day4", color: "#d97706", desc: "2026年新亮點！任天堂官方博物館，展出歷代主機與遊戲。" },
+            { id: "katsuoji", name: "勝尾寺", lat: 34.95, lng: 135.68, category: "景點", day: "day4", color: "#d97706", desc: "以「勝運」聞名，境內有大量達摩。適合求好運或散步。" },
+            { id: "hotel_osaka", name: "大阪四季靱公園酒店", lat: 34.6925, lng: 135.489, category: "住宿", day: "day5", color: "#f43f5e", desc: "大阪住宿基地。位於市中心，前往梅田、難波、心齋橋都方便。" },
+            { id: "ebisubashi", name: "戎橋（大阪）", lat: 34.6686, lng: 135.5015, category: "景點", day: "day5", color: "#f43f5e", desc: "道頓堀心臟地帶。與心齋橋、難波橋形成大阪經典夜景與美食區。" },
+            { id: "rinku_outlet", name: "りんくうプレミアム・アウトレット", lat: 34.3638, lng: 135.2695, category: "購物娛樂", day: "day6", color: "#0f766e", desc: "關西機場旁日本最大Outlet之一。離境前最後購物好去處。" },
+            { id: "kyoto_station", name: "京都車站", lat: 34.9855, lng: 135.7588, category: "實用", day: "day1", color: "#64748b", desc: "交通樞紐。超市、便利店、餐廳一應俱全。" }
+        ];
+        
+        // All places for search list (simplified from CSV)
+        const allPlaces = [
+            { name: "梅小路皇家公園酒店（京都）", url: "https://maps.app.goo.gl/F9GBqC8weUcmGoHMA", cat: "住宿", day: "day1" },
+            { name: "大阪四季靱公園酒店", url: "https://maps.app.goo.gl/7uJk13Q82oK7KeV3A", cat: "住宿", day: "day5" },
+            { name: "京都水族館", url: "https://maps.app.goo.gl/tfXNBU9WViwHvt6x8", cat: "景點", day: "day1" },
+            { name: "京都鐵道博物館", url: "https://maps.app.goo.gl/ZyJRfkYgMyYZk5Dh9", cat: "景點", day: "day1" },
+            { name: "八坂之塔(五重塔)拍照點", url: "https://maps.app.goo.gl/qdjsUsg6LYJMQnKK7", cat: "景點", day: "day3" },
+            { name: "金閣寺", url: "https://maps.app.goo.gl/pnUim1QXynPmULWC7", cat: "景點", day: "day3" },
+            { name: "平等院", url: "https://maps.app.goo.gl/sRZUx8vysvyHijAP6?g_st=ic", cat: "景點", day: "day4" },
+            { name: "任天堂博物館", url: "https://maps.app.goo.gl/3mjstP7h9RqSxLvd9?g_st=ac", cat: "購物娛樂", day: "day4" },
+            { name: "勝尾寺", url: "https://maps.app.goo.gl/J9vWPtKV8YBq4A9u8?g_st=ac", cat: "景點", day: "day4" },
+            { name: "東映太秦映畫村", url: "https://maps.app.goo.gl/NAyqqbpwaLnrp33W6", cat: "景點", day: "day3" },
+            { name: "京都傳統產業博物館", url: "https://maps.app.goo.gl/ENc738Xffn8fbd377", cat: "景點", day: "day3" },
+            { name: "月桂冠大倉紀念館", url: "https://maps.app.goo.gl/BRrekFLcXWuDzFG8A", cat: "景點", day: "day3" },
+            { name: "三十三間堂", url: "https://maps.app.goo.gl/HS5mTxEavXj4AN2j6", cat: "景點", day: "day3" },
+            { name: "竹林", url: "https://maps.app.goo.gl/mWYxTH7sPirTEp5s5?g_st=ic", cat: "景點", day: "day2" },
+            { name: "天龍寺位置", url: "https://maps.app.goo.gl/9abUoS4c6RgJ6jw57?g_st=ic", cat: "景點", day: "day2" },
+            { name: "渡月橋", url: "https://maps.app.goo.gl/WKZVhNKZWXCtzsCf6?g_st=ic", cat: "景點", day: "day2" },
+            { name: "祇園白川", url: "https://maps.app.goo.gl/99U1EqVaxMukbiH49?g_st=ic", cat: "景點", day: "day3" },
+            { name: "貴船神社", url: "https://maps.app.goo.gl/3KXEEXroG3f1U2UJ7", cat: "景點", day: "day2" },
+            { name: "京都車站", url: "https://maps.app.goo.gl/vK4PwpUxw4bq4FTv6?g_st=ac", cat: "實用", day: "day1" },
+            { name: "宇治車站", url: "https://maps.app.goo.gl/LxaA9jzzj8aaibtN9?g_st=ic", cat: "實用", day: "day4" },
+            { name: "LIFE", url: "https://maps.app.goo.gl/tnRWNYek71ixWFHd8", cat: "實用", day: "day1" },
+            { name: "outlet", url: "https://maps.app.goo.gl/FLS59BvjKKRTgJNx5?g_st=ac", cat: "購物娛樂", day: "day6" },
+            { name: "👍🥘🥩三嶋亭壽喜燒", url: "https://maps.app.goo.gl/we9r6t63aEpeSFCP8?g_st=ic", cat: "美食", day: "day5" },
+            { name: "必吃回轉壽司", url: "https://maps.app.goo.gl/qdL988wsW2Yv1eqW8", cat: "美食", day: "day5" },
+            { name: "🍵🍰🍜🍦中村藤吉", url: "https://maps.app.goo.gl/FH6TsvBhS3eV6cRG8?g_st=ac", cat: "美食", day: "day4" },
+            { name: "戎橋", url: "https://maps.app.goo.gl/QGZF3XeBfY4Yx33FA", cat: "景點", day: "day5" },
+            { name: "心齋橋筋", url: "https://maps.app.goo.gl/7pTA27YsGY8Y9f2w9?g_st=ac", cat: "景點", day: "day5" },
+            { name: "7-11(車站)", url: "https://maps.app.goo.gl/doTnG1syTseAuNna8", cat: "實用", day: "day1" },
+            { name: "全家(1F)", url: "https://maps.app.goo.gl/uLvwWSD76t5TXQo9A", cat: "實用", day: "day1" },
+            { name: "LAWSON(近)", url: "https://maps.app.goo.gl/vPAojxvgXiWQcceVA", cat: "實用", day: "day1" }
+        ];
+        
+        const categoryConfig = {
+            "住宿": { color: "#14b8a6", icon: "🏨", bg: "bg-teal-100", text: "text-teal-700" },
+            "景點": { color: "#0ea5e9", icon: "🏯", bg: "bg-sky-100", text: "text-sky-700" },
+            "美食": { color: "#f43f5e", icon: "🍜", bg: "bg-rose-100", text: "text-rose-700" },
+            "購物娛樂": { color: "#8b5cf6", icon: "🛍️", bg: "bg-violet-100", text: "text-violet-700" },
+            "實用": { color: "#64748b", icon: "🛠️", bg: "bg-slate-100", text: "text-slate-700" }
+        };
+        
+        function createDayCards() {
+            const container = document.getElementById('dayCards');
+            container.innerHTML = '';
+            
+            daysData.forEach(day => {
+                const card = document.createElement('div');
+                card.className = `day-card group bg-white border border-slate-200 rounded-3xl p-5 flex flex-col hover:border-teal-300`;
+                card.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-xs font-mono tracking-[1px] text-slate-400">${day.num}</div>
+                            <div class="mt-1 text-xl font-bold text-slate-900 group-hover:text-teal-700 transition">${day.emoji} ${day.title}</div>
+                        </div>
+                        <div class="text-4xl opacity-80 group-hover:scale-110 transition">${day.emoji}</div>
+                    </div>
+                    <div class="mt-3 text-sm text-slate-600 line-clamp-2">${day.hook}</div>
+                    <div class="mt-auto pt-4 flex items-center justify-between text-xs">
+                        <div class="font-medium text-teal-600">${day.places.length} 個推薦點位</div>
+                        <div class="px-3 py-1 bg-teal-50 text-teal-700 rounded-2xl text-[10px] font-bold">點擊查看</div>
+                    </div>
+                `;
+                
+                card.onclick = () => showDayDetail(day.id);
+                container.appendChild(card);
+            });
+        }
+        
+        function showDayDetail(dayId) {
+            const day = daysData.find(d => d.id === dayId);
+            if (!day) return;
+            
+            currentDayFilter = dayId;
+            
+            // Update panel
+            document.getElementById('dayDetailTitle').innerHTML = `${day.emoji} ${day.num} ${day.title}`;
+            document.getElementById('dayDetailSubtitle').innerHTML = day.hook;
+            document.getElementById('dayOverviewText').innerHTML = `<p>${day.overview}</p>`;
+            
+            // Render day places
+            const listContainer = document.getElementById('dayPlacesList');
+            listContainer.innerHTML = '';
+            
+            day.places.forEach(place => {
+                const div = document.createElement('div');
+                div.className = `place-row flex items-start gap-x-4 p-4 bg-white border border-slate-100 rounded-2xl`;
+                
+                const fullPlace = allPlaces.find(p => p.name === place.name) || {};
+                
+                div.innerHTML = `
+                    <div class="flex-1">
+                        <div class="font-semibold text-slate-800">${place.name}</div>
+                        <div class="text-sm text-slate-600 mt-1">${place.note}</div>
+                    </div>
+                    <div>
+                        <button onclick="event.stopImmediatePropagation(); openGoogleMap('${fullPlace.url || '#'}');" 
+                                class="px-4 py-2 text-xs font-bold bg-teal-700 hover:bg-teal-800 text-white rounded-3xl transition">
+                            開啟 Google 地圖
+                        </button>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+            
+            document.getElementById('dayPlaceCount').innerHTML = `${day.places.length} 個點位`;
+            
+            // Show panel
+            document.getElementById('dayDetailPanel').classList.remove('hidden');
+            document.getElementById('dayDetailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            
+            // Filter map
+            filterMapByDay(dayId);
+        }
+        
+        function hideDayDetail() {
+            document.getElementById('dayDetailPanel').classList.add('hidden');
+            currentDayFilter = null;
+            showAllMarkers();
+            document.getElementById('mapStatus').innerHTML = '';
+        }
+        
+        function filterMapByDay(dayId) {
+            if (!map) return;
+            
+            // Remove all current markers
+            Object.values(allMarkers).forEach(marker => map.removeLayer(marker));
+            allMarkers = {};
+            
+            const dayPoints = mapPoints.filter(p => p.day === dayId);
+            
+            dayPoints.forEach(point => {
+                const icon = L.divIcon({
+                    className: 'custom-marker',
+                    html: `<div style="background-color: ${point.color}; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size:13px;">${categoryConfig[point.category] ? categoryConfig[point.category].icon : '📍'}</div>`,
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13],
+                    popupAnchor: [0, -13]
+                });
+                
+                const marker = L.marker([point.lat, point.lng], { icon }).addTo(map);
+                
+                const popupHtml = `
+                    <div style="min-width:210px; font-family:'Noto Sans TC',system-ui,sans-serif;">
+                        <div style="font-weight:700; font-size:15px; color:#134e4b; margin-bottom:4px;">${point.name}</div>
+                        <div style="font-size:12px; color:#64748b; margin-bottom:8px;">${point.category}</div>
+                        <div style="font-size:13px; line-height:1.5; color:#334155;">${point.desc}</div>
+                    </div>
+                `;
+                marker.bindPopup(popupHtml);
+                allMarkers[point.id] = marker;
+            });
+            
+            // Fit bounds to day's points
+            if (dayPoints.length > 0) {
+                const bounds = L.latLngBounds(dayPoints.map(p => [p.lat, p.lng]));
+                map.flyToBounds(bounds, { padding: [40, 40], duration: 1.2 });
+            }
+            
+            document.getElementById('mapStatus').innerHTML = `・目前顯示：${daysData.find(d => d.id === dayId).title}`;
+        }
+        
+        function showAllMarkers() {
+            if (!map) return;
+            
+            Object.values(allMarkers).forEach(marker => map.removeLayer(marker));
+            allMarkers = {};
+            
+            mapPoints.forEach(point => {
+                const icon = L.divIcon({
+                    className: 'custom-marker',
+                    html: `<div style="background-color: ${point.color}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.25); font-size:12px;">${categoryConfig[point.category] ? categoryConfig[point.category].icon : '📍'}</div>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                    popupAnchor: [0, -12]
+                });
+                
+                const marker = L.marker([point.lat, point.lng], { icon }).addTo(map);
+                
+                const popupHtml = `
+                    <div style="min-width:210px; font-family:'Noto Sans TC',system-ui,sans-serif;">
+                        <div style="font-weight:700; font-size:15px; color:#134e4b; margin-bottom:4px;">${point.name}</div>
+                        <div style="font-size:12px; color:#64748b; margin-bottom:8px;">${point.category}・${daysData.find(d => d.id === point.day)?.num || ''}</div>
+                        <div style="font-size:13px; line-height:1.5; color:#334155;">${point.desc}</div>
+                    </div>
+                `;
+                marker.bindPopup(popupHtml);
+                allMarkers[point.id] = marker;
+            });
+            
+            map.flyTo([34.92, 135.72], 10, { duration: 1.3 });
+            document.getElementById('mapStatus').innerHTML = '';
+        }
+        
+        function initializeMap() {
+            map = L.map('map', { zoomControl: true, attributionControl: false }).setView([34.92, 135.72], 10);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                className: 'map-tiles'
+            }).addTo(map);
+            
+            showAllMarkers(); // initial all markers
+        }
+        
+        function renderFullPlacesList(filtered = null) {
+            const container = document.getElementById('fullPlacesList');
+            container.innerHTML = '';
+            
+            let list = filtered || allPlaces;
+            
+            if (list.length === 0) {
+                container.innerHTML = `<div class="p-6 text-center text-slate-400 text-sm">沒有符合條件的點位</div>`;
+                return;
+            }
+            
+            list.forEach(place => {
+                const config = categoryConfig[place.cat] || { icon: "📍", bg: "bg-slate-100", text: "text-slate-600" };
+                const dayInfo = daysData.find(d => d.id === place.day);
+                
+                const row = document.createElement('div');
+                row.className = `flex items-center gap-x-4 px-5 py-3 border-b last:border-b-0 hover:bg-slate-50 cursor-pointer`;
+                
+                row.innerHTML = `
+                    <div class="flex-shrink-0 w-8 h-8 ${config.bg} rounded-2xl flex items-center justify-center text-lg">${config.icon}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-medium text-slate-800">${place.name}</div>
+                        <div class="flex items-center gap-x-2 text-xs mt-0.5">
+                            <span class="${config.text}">${place.cat}</span>
+                            ${dayInfo ? `<span class="text-teal-600 font-mono text-[10px]">${dayInfo.num}</span>` : ''}
+                        </div>
+                    </div>
+                    <button onclick="event.stopImmediatePropagation(); openGoogleMap('${place.url}');" 
+                            class="px-4 py-1.5 text-xs font-bold border border-slate-300 hover:bg-teal-50 hover:border-teal-300 text-teal-700 rounded-3xl transition">
+                        Google 地圖
+                    </button>
+                `;
+                
+                row.onclick = () => {
+                    if (place.day) {
+                        showDayDetail(place.day);
+                    } else {
+                        openGoogleMap(place.url);
+                    }
+                };
+                
+                container.appendChild(row);
+            });
+        }
+        
+        function setupGlobalSearch() {
+            const input = document.getElementById('globalSearch');
+            input.addEventListener('input', () => {
+                const term = input.value.toLowerCase().trim();
+                if (!term) {
+                    renderFullPlacesList();
+                    return;
+                }
+                const filtered = allPlaces.filter(p => p.name.toLowerCase().includes(term) || p.cat.toLowerCase().includes(term));
+                renderFullPlacesList(filtered);
+            });
+        }
+        
+        function openGoogleMap(url) {
+            if (url && url !== '#') window.open(url, '_blank');
+        }
+        
+        function showAllDays() {
+            hideDayDetail();
+            showAllMarkers();
+            document.getElementById('globalSearch').value = '';
+            renderFullPlacesList();
+        }
+        
+        function resetMapAndDays() {
+            hideDayDetail();
+            showAllMarkers();
+        }
+        
+        function initializeApp() {
+            createDayCards();
+            initializeMap();
+            renderFullPlacesList();
+            setupGlobalSearch();
+            
+            // Welcome hint
+            setTimeout(() => {
+                console.log('%c[2026 Daily Itinerary Map v3] Ready. Click any day card to explore detailed plan + filtered map.', 'color:#64748b');
+            }, 800);
+        }
+        
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>
